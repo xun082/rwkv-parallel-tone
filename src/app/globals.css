@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+:root {
+  --background: #020617;
+  --foreground: #e5e7eb;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+
+/* Subtle scrollbars for dark UI (cards, modals) */
+.tone-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(63 63 70 / 0.35) transparent;
+}
+
+.tone-scrollbar:hover {
+  scrollbar-color: rgb(82 82 91 / 0.85) transparent;
+}
+
+.tone-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.tone-scrollbar::-webkit-scrollbar-track {
+  margin-block: 2px;
+  background: transparent;
+}
+
+.tone-scrollbar::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  background-color: rgb(63 63 70 / 0.35);
+  background-clip: padding-box;
+  transition: background-color 0.15s ease;
+}
+
+.tone-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: rgb(82 82 91 / 0.85);
+}
+
+.tone-scrollbar::-webkit-scrollbar-thumb:active {
+  background-color: rgb(113 113 122);
+}
