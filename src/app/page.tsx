@@ -190,7 +190,7 @@ function PromptEditor({ onClose, onSaved }: PromptEditorProps): React.JSX.Elemen
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
       <div className="flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/50">
-        <div className="flex items-start justify-between border-b border-zinc-800 bg-gradient-to-r from-zinc-900 to-zinc-950 p-5">
+        <div className="flex items-start justify-between border-b border-zinc-800 bg-linear-to-r from-zinc-900 to-zinc-950 p-5">
           <div>
             <h2 className="text-xl font-bold text-zinc-100">编辑 Prompt 模板</h2>
             <p className="mt-2 text-sm text-zinc-400">
@@ -365,7 +365,7 @@ const ResultCard = memo(function ResultCard({
 
   return (
     <article className="group flex h-[200px] flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 shadow-sm backdrop-blur transition hover:-translate-y-1 hover:border-cyan-500/50 hover:shadow-xl">
-      <div className={cn("h-1.5 shrink-0 bg-gradient-to-r", result.color)} />
+      <div className={cn("h-1.5 shrink-0 bg-linear-to-r", result.color)} />
 
       <div className="flex min-h-0 flex-1 flex-col p-4">
         <header className="mb-3 flex shrink-0 items-center justify-between gap-2">
@@ -373,7 +373,7 @@ const ResultCard = memo(function ResultCard({
             <span className="text-2xl">{result.icon}</span>
             <span
               className={cn(
-                "truncate rounded-full bg-gradient-to-r px-3 py-1 text-xs font-semibold text-white",
+                "truncate rounded-full bg-linear-to-r px-3 py-1 text-xs font-semibold text-white",
                 result.color,
               )}
             >
@@ -399,7 +399,7 @@ const ResultCard = memo(function ResultCard({
         <div className="tone-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <p
             className={cn(
-              "whitespace-pre-wrap break-words text-sm leading-6",
+              "whitespace-pre-wrap wrap-break-word text-sm leading-6",
               hasContent ? "text-zinc-200" : "text-zinc-500",
             )}
           >
