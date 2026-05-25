@@ -10,6 +10,15 @@ import {
   type ApiSettings,
 } from "@/lib/api-settings-store";
 import {
+  apiSettingsSchema,
+  formatZodError,
+  userInputSchema,
+} from "@/lib/schemas";
+import {
+  GenerateRequestError,
+  runBatchGenerate,
+} from "@/lib/generate-client";
+import {
   getMergedStyleConfigs,
   resetCustomPrompts,
   saveCustomPrompts,
@@ -22,26 +31,6 @@ interface GeneratedResult {
   isComplete: boolean;
   color: string;
   icon: string;
-}
-
-interface StreamChoice {
-  index?: number;
-  delta?: {
-    content?: string;
-  };
-}
-
-interface ApiErrorPayload {
-  code?: string;
-  error?: string;
-  detail?: string;
-  api?: string;
-}
-
-interface RequestError extends Error {
-  status?: number;
-  code?: string;
-  source?: "proxy";
 }
 
 const EXAMPLE_PROMPTS = [
@@ -70,30 +59,11 @@ function buildInitialResults(configs: StyleConfig[]): GeneratedResult[] {
   }));
 }
 
-function markResultsComplete(results: GeneratedResult[]): GeneratedResult[] {
-  return results.map((result) => ({ ...result, isComplete: true }));
-}
-
-function applyChoices(
-  results: GeneratedResult[],
-  choices: StreamChoice[],
-): GeneratedResult[] {
-  const next = [...results];
-
-  for (const choice of choices) {
-    const index = typeof choice.index === "number" ? choice.index : -1;
-    const deltaContent = choice.delta?.content ?? "";
-    if (!deltaContent || index < 0 || index >= next.length) {
-      continue;
-    }
-
-    next[index] = {
-      ...next[index],
-      content: next[index].content + deltaContent,
-    };
+function getResultPlaceholder(result: GeneratedResult): string {
+  if (!result.isComplete) {
+    return "生成中...";
   }
-
-  return next;
+  return "未返回内容";
 }
 
 interface PromptEditorProps {
@@ -113,6 +83,7 @@ function PromptEditor({ onClose, onSaved }: PromptEditorProps): React.JSX.Elemen
   });
   const [searchTerm, setSearchTerm] = useState("");
   const [apiSettings, setApiSettings] = useState<ApiSettings>(() => loadApiSettings());
+  const [settingsError, setSettingsError] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
@@ -130,6 +101,12 @@ function PromptEditor({ onClose, onSaved }: PromptEditorProps): React.JSX.Elemen
   }, [edits, searchTerm]);
 
   const handleSave = () => {
+    const apiResult = apiSettingsSchema.safeParse(apiSettings);
+    if (!apiResult.success) {
+      setSettingsError(formatZodError(apiResult.error));
+      return;
+    }
+
     const customizations: Record<string, string> = {};
 
     for (const defaultConfig of STYLE_CONFIGS) {
@@ -143,7 +120,8 @@ function PromptEditor({ onClose, onSaved }: PromptEditorProps): React.JSX.Elemen
     }
 
     saveCustomPrompts(customizations);
-    saveApiSettings(apiSettings);
+    saveApiSettings(apiResult.data);
+    setSettingsError(null);
     onSaved();
     onClose();
   };
@@ -151,6 +129,7 @@ function PromptEditor({ onClose, onSaved }: PromptEditorProps): React.JSX.Elemen
   const handleResetApiSettings = () => {
     resetApiSettings();
     setApiSettings({ apiUrl: "", password: "" });
+    setSettingsError(null);
   };
 
   const handleResetAll = () => {
@@ -230,9 +209,17 @@ function PromptEditor({ onClose, onSaved }: PromptEditorProps): React.JSX.Elemen
                 恢复环境变量
               </button>
             </div>
+            <p className="mb-3 text-xs text-zinc-500">
+              留空则使用 <code className="rounded bg-zinc-800 px-1 text-zinc-300">.env.local</code>{" "}
+              中的 <code className="rounded bg-zinc-800 px-1 text-zinc-300">RWKV_API_URL</code> /{" "}
+              <code className="rounded bg-zinc-800 px-1 text-zinc-300">RWKV_PASSWORD</code>。
+            </p>
+            {settingsError && (
+              <p className="mb-3 text-xs text-amber-400">{settingsError}</p>
+            )}
             <div className="space-y-3">
               <label className="block">
-                <span className="mb-1.5 block text-xs text-zinc-400">API URL</span>
+                <span className="mb-1.5 block text-xs text-zinc-400">API URL（可选）</span>
                 <input
                   className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 font-mono text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-cyan-500"
                   value={apiSettings.apiUrl}
@@ -245,7 +232,7 @@ function PromptEditor({ onClose, onSaved }: PromptEditorProps): React.JSX.Elemen
                 />
               </label>
               <label className="block">
-                <span className="mb-1.5 block text-xs text-zinc-400">密码</span>
+                <span className="mb-1.5 block text-xs text-zinc-400">密码（可选）</span>
                 <input
                   className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 font-mono text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-cyan-500"
                   value={apiSettings.password}
@@ -403,7 +390,7 @@ const ResultCard = memo(function ResultCard({
               hasContent ? "text-zinc-200" : "text-zinc-500",
             )}
           >
-            {hasContent ? result.content : isGenerating ? "生成中..." : "等待生成..."}
+            {hasContent ? result.content : getResultPlaceholder(result)}
           </p>
         </div>
       </div>
@@ -417,133 +404,62 @@ export default function Home(): React.JSX.Element {
   const [isLoading, setIsLoading] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [isPromptEditorOpen, setPromptEditorOpen] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const parseStream = async (response: Response) => {
-    if (!response.body) {
-      throw new Error("无法读取响应流");
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) {
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const rawLine of lines) {
-          const line = rawLine.trim();
-          if (!line || !line.startsWith("data: ")) {
-            continue;
-          }
-
-          const payload = line.slice(6);
-          if (payload === "[DONE]") {
-            setResults((prev) => markResultsComplete(prev));
-            continue;
-          }
-
-          try {
-            const parsed = JSON.parse(payload) as { choices?: StreamChoice[] };
-            if (!Array.isArray(parsed.choices)) {
-              continue;
-            }
-
-            setResults((prev) => applyChoices(prev, parsed.choices ?? []));
-          } catch {
-            // upstream may occasionally emit non-json lines; ignore quietly
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-      setResults((prev) => markResultsComplete(prev));
-    }
-  };
-
-  const parseApiError = async (response: Response): Promise<RequestError> => {
-    const error = new Error(`请求失败：${response.status}`) as RequestError;
-    error.status = response.status;
-    error.source = "proxy";
-
-    try {
-      const payload = (await response.json()) as ApiErrorPayload;
-      error.code = payload.code;
-      if (payload.error) {
-        error.message = payload.detail
-          ? `${payload.error}\n${payload.detail}`
-          : payload.error;
-      }
-      return error;
-    } catch {
-      const text = await response.text().catch(() => "");
-      if (text) {
-        error.message = text;
-      }
-      return error;
-    }
-  };
-
-  const streamWithProxy = async (
-    userInput: string,
-    styles: StyleConfig[],
-    signal: AbortSignal,
-  ) => {
-    const response = await fetch("/api/generate", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        userInput,
-        styles,
-        ...getApiSettingsPayload(),
-      }),
-      signal,
-    });
-
-    if (!response.ok) {
-      throw await parseApiError(response);
-    }
-    await parseStream(response);
-  };
-
   const handleGenerate = async () => {
-    const trimmedInput = input.trim();
-    if (!trimmedInput || isLoading) {
+    if (isLoading) {
+      return;
+    }
+
+    const inputResult = userInputSchema.safeParse(input);
+    if (!inputResult.success) {
+      setGenerateError(formatZodError(inputResult.error));
       return;
     }
 
     const mergedConfigs = getMergedStyleConfigs();
-    setResults(buildInitialResults(mergedConfigs));
+    const initialResults = buildInitialResults(mergedConfigs);
+    setResults(initialResults);
     setCopiedIndex(null);
+    setGenerateError(null);
     setIsLoading(true);
 
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
     try {
-      await streamWithProxy(
-        trimmedInput,
-        mergedConfigs,
-        abortController.signal,
-      );
-    } catch (error) {
-      const err = error as Error & { name?: string };
-      if (err.name !== "AbortError") {
-        alert(err.message || "生成失败");
+      const { filledCount, total } = await runBatchGenerate({
+        userInput: inputResult.data,
+        styles: mergedConfigs,
+        apiPayload: getApiSettingsPayload(),
+        signal: abortController.signal,
+        initialResults,
+        onResults: setResults,
+      });
+
+      if (filledCount === 0) {
+        setGenerateError(
+          "上游已响应，但所有风格均未返回文本。请检查密码、模板或稍后重试。",
+        );
+      } else if (filledCount < total) {
+        setGenerateError(
+          `部分风格未返回内容（${filledCount}/${total}）。可尝试缩短输入后重试。`,
+        );
       }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      const message =
+        error instanceof GenerateRequestError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "生成失败";
+      setGenerateError(message);
     } finally {
       setIsLoading(false);
       abortControllerRef.current = null;
@@ -555,6 +471,7 @@ export default function Home(): React.JSX.Element {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     setIsLoading(false);
+    setGenerateError(null);
   };
 
   const handleCopy = useCallback(async (index: number, content: string) => {
@@ -639,6 +556,12 @@ export default function Home(): React.JSX.Element {
           </section>
         )}
 
+        {generateError && (
+          <div className="relative z-30 mx-auto mb-4 max-w-3xl rounded-2xl border border-amber-500/40 bg-amber-950/80 px-4 py-3 text-sm text-amber-100">
+            {generateError}
+          </div>
+        )}
+
         {results.length > 0 && (
           <section className="relative z-20">
             {isLoading && (
@@ -691,7 +614,7 @@ export default function Home(): React.JSX.Element {
           ) : (
             <button
               className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:bg-zinc-700"
-              disabled={!input.trim()}
+              disabled={!userInputSchema.safeParse(input).success}
               onClick={() => {
                 void handleGenerate();
               }}

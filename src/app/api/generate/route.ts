@@ -1,123 +1,45 @@
-import { appendStrictOutputRules, normalizePrompt } from "@/lib/prompt-rules";
-import { type StyleConfig, STYLE_CONFIGS } from "@/lib/style-configs";
+import { buildUpstreamBody } from "@/lib/rwkv-payload";
+import { resolveServerApiConfig, toSafeApiLabel } from "@/lib/rwkv-config";
+import { formatZodError, generateRequestSchema } from "@/lib/schemas";
+import { STYLE_CONFIGS } from "@/lib/style-configs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-interface GenerateRequestBody {
-  userInput?: string;
-  styles?: StyleConfig[];
-  apiUrl?: string;
-  password?: string;
-}
-
-const DEFAULT_MODEL_PARAMS = {
-  max_tokens: 100,
-  temperature: 0.95,
-  top_k: 50,
-  top_p: 0.9,
-  pad_zero: true,
-  alpha_presence: 1.0,
-  alpha_frequency: 1.0,
-  alpha_decay: 0.996,
-  chunk_size: 128,
-  stream: true,
-};
-
-function isStyleConfig(value: unknown): value is StyleConfig {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const candidate = value as Partial<StyleConfig>;
-  return (
-    typeof candidate.name === "string" &&
-    typeof candidate.color === "string" &&
-    typeof candidate.icon === "string" &&
-    typeof candidate.prompt === "string"
-  );
-}
-
-function buildContents(userInput: string, styles: StyleConfig[]): string[] {
-  return styles.map((style) => {
-    const promptWithRules = appendStrictOutputRules(style.prompt);
-
-    if (promptWithRules.includes("${{input}}")) {
-      return normalizePrompt(
-        promptWithRules.replace(/\$\{\{input\}\}/g, userInput),
-      );
-    }
-
-    return normalizePrompt(
-      `${promptWithRules}\n待改写内容：${userInput}\nAssistant: <think>\n</think>`,
-    );
-  });
-}
-
-function resolveApiConfig(overrides?: {
-  apiUrl?: string;
-  password?: string;
-}): { apiUrl: string; password: string } {
-  const overrideUrl = overrides?.apiUrl?.trim();
-  const overridePassword = overrides?.password?.trim();
-
-  return {
-    apiUrl: overrideUrl || process.env.RWKV_API_URL?.trim() || "",
-    password: overridePassword || process.env.RWKV_PASSWORD?.trim() || "",
-  };
-}
-
-function toSafeApiLabel(apiUrl: string): string {
-  try {
-    const url = new URL(apiUrl);
-    return `${url.protocol}//${url.host}${url.pathname}`;
-  } catch {
-    return apiUrl;
-  }
-}
-
 export async function POST(request: Request): Promise<Response> {
-  let body: GenerateRequestBody;
+  let json: unknown;
   try {
-    body = (await request.json()) as GenerateRequestBody;
+    json = await request.json();
   } catch {
     return Response.json({ error: "请求体不是合法 JSON" }, { status: 400 });
   }
 
-  const { apiUrl, password } = resolveApiConfig({
-    apiUrl: body.apiUrl,
-    password: body.password,
+  const parsed = generateRequestSchema.safeParse(json);
+  if (!parsed.success) {
+    return Response.json(
+      { code: "INVALID_REQUEST", error: formatZodError(parsed.error) },
+      { status: 400 },
+    );
+  }
+
+  const { apiUrl, password } = resolveServerApiConfig({
+    apiUrl: parsed.data.apiUrl,
+    password: parsed.data.password,
   });
 
   if (!apiUrl) {
     return Response.json(
-      {
-        code: "MISSING_API_URL",
-        error: "缺少上游 API URL 配置",
-      },
+      { code: "MISSING_API_URL", error: "请在 .env.local 配置 RWKV_API_URL" },
       { status: 500 },
     );
   }
 
-  const userInput = body.userInput?.trim();
-  if (!userInput) {
-    return Response.json({ error: "userInput 不能为空" }, { status: 400 });
-  }
-
-  const styles = Array.isArray(body.styles)
-    ? body.styles.filter(isStyleConfig)
-    : STYLE_CONFIGS;
-
-  if (styles.length === 0) {
-    return Response.json({ error: "至少需要一个风格配置" }, { status: 400 });
-  }
-
-  const contents = buildContents(userInput, styles);
-  const upstreamPayload: Record<string, unknown> = {
-    ...DEFAULT_MODEL_PARAMS,
-    contents,
-    ...(password ? { password } : {}),
-  };
+  const styles = parsed.data.styles ?? STYLE_CONFIGS;
+  const upstreamPayload = buildUpstreamBody(
+    parsed.data.userInput,
+    styles,
+    password,
+  );
 
   let upstreamResponse: Response;
   try {
@@ -125,8 +47,7 @@ export async function POST(request: Request): Promise<Response> {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Accept: "*/*",
-        "Accept-Language": "zh-CN,zh;q=0.9",
+        Accept: "text/event-stream, application/json",
       },
       body: JSON.stringify(upstreamPayload),
       signal: request.signal,
@@ -135,14 +56,14 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "无法连接上游 RWKV 服务";
-    console.error("[/api/generate] Upstream connect error:", {
+    console.error("[/api/generate] connect error:", {
       api: toSafeApiLabel(apiUrl),
       message,
     });
     return Response.json(
       {
         code: "UPSTREAM_CONNECT_ERROR",
-        error: message,
+        error: `无法连接 ${toSafeApiLabel(apiUrl)}：${message}`,
         api: toSafeApiLabel(apiUrl),
       },
       { status: 502 },
@@ -155,13 +76,12 @@ export async function POST(request: Request): Promise<Response> {
     const isAuthError = upstreamStatus === 401 || upstreamStatus === 403;
     const responseStatus = upstreamStatus >= 500 ? 502 : upstreamStatus;
     const message = isAuthError
-      ? "上游返回 401/403：当前节点对 chat/completions 开启了鉴权（即使 models 接口可访问）"
-      : `上游 RWKV 请求失败: ${upstreamResponse.status} ${upstreamResponse.statusText}`;
+      ? "密码错误或无权访问 big_batch/completions"
+      : `上游请求失败 (${upstreamStatus})`;
 
-    console.error("[/api/generate] Upstream bad response:", {
+    console.error("[/api/generate] bad response:", {
       api: toSafeApiLabel(apiUrl),
       status: upstreamStatus,
-      statusText: upstreamResponse.statusText,
       detail: errorText.slice(0, 300),
     });
     return Response.json(
