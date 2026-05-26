@@ -1,6 +1,7 @@
 "use client";
 
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useAutogrowTextarea } from "@/lib/use-autogrow-textarea";
 import { STYLE_CONFIGS, type StyleConfig } from "@/lib/style-configs";
 import {
   getApiSettingsPayload,
@@ -34,6 +35,7 @@ interface GeneratedResult {
 }
 
 const EXAMPLE_PROMPTS = [
+  "燕子去了，有再来的时候；杨柳枯了，有再青的时候；桃花谢了，有再开的时候。但是，聪明的，你告诉我，我们的日子为什么一去不复返呢？——是有人偷了他们罢：那是谁？又藏在何处呢？是他们自己逃走了罢：现在又到了哪里呢？",
   "今天路上堵车，预计会晚到十五分钟。",
   "这个方案我不同意，需要重做。",
   "需求已经完成，今晚八点前交付最终版本。",
@@ -407,7 +409,21 @@ export default function Home(): React.JSX.Element {
   const [generateError, setGenerateError] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputDockRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  useAutogrowTextarea(inputRef, input);
+
+  useLayoutEffect(() => {
+    const dock = inputDockRef.current;
+    if (!dock) {
+      return;
+    }
+    document.documentElement.style.setProperty(
+      "--input-dock-height",
+      `${dock.offsetHeight}px`,
+    );
+  }, [input, isLoading]);
 
   const handleGenerate = async () => {
     if (isLoading) {
@@ -526,7 +542,7 @@ export default function Home(): React.JSX.Element {
         />
       )}
 
-      <main className="w-full px-4 pb-28 pt-6">
+      <main className="w-full px-4 pt-6 pb-[calc(var(--input-dock-height,7rem)+1.5rem)]">
         {results.length === 0 && (
           <section className="relative z-20 mx-auto mt-[12vh] w-full max-w-4xl">
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900/70 p-6 shadow-2xl shadow-black/20 backdrop-blur sm:p-8">
@@ -592,15 +608,19 @@ export default function Home(): React.JSX.Element {
 
       </main>
 
-      <div className="fixed bottom-6 left-1/2 z-40 w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2">
+      <div
+        ref={inputDockRef}
+        className="fixed bottom-6 left-1/2 z-40 w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2"
+      >
         <div className="flex items-end gap-3 rounded-3xl border border-zinc-700 bg-zinc-900/95 px-4 py-3 shadow-xl backdrop-blur-xl">
           <textarea
             ref={inputRef}
+            rows={1}
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleInputKeyDown}
             placeholder="输入你要表达的话，按 Ctrl/Cmd + Enter 发送"
-            className="max-h-56 min-h-[56px] flex-1 resize-y bg-transparent text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-500"
+            className="input-autogrow min-h-14 max-h-80 flex-1 bg-transparent text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-500"
           />
 
           {isLoading ? (

@@ -3,6 +3,7 @@
 :root {
   --background: #020617;
   --foreground: #e5e7eb;
+  --input-dock-height: 7rem;
 }
 
 @theme inline {
@@ -62,4 +63,14 @@ body {
 
 .tone-scrollbar::-webkit-scrollbar-thumb:active {
   background-color: rgb(113 113 122);
+}
+
+/* 底部输入框：自动增高，超出上限时滚动但不显示滚动条 */
+.input-autogrow {
+  resize: none;
+  scrollbar-width: none;
+}
+
+.input-autogrow::-webkit-scrollbar {
+  display: none;
 }
