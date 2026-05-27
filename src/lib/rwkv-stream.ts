@@ -1,3 +1,5 @@
+import { stripEmptyLines } from "@/lib/prompt-rules";
+
 export interface StreamChoice {
   index?: number;
   delta?: {
@@ -19,6 +21,11 @@ export function sanitizeStreamDelta(text: string): string {
   return text.replace(/✿/g, "").replace(/^Bot\s*/i, "");
 }
 
+function appendStreamContent(existing: string, delta: string): string {
+  const combined = existing + delta;
+  return stripEmptyLines(combined);
+}
+
 export function applyStreamChoices<T extends StreamResultSlice>(
   results: T[],
   choices: StreamChoice[],
@@ -34,7 +41,7 @@ export function applyStreamChoices<T extends StreamResultSlice>(
 
     next[index] = {
       ...next[index],
-      content: next[index].content + deltaContent,
+      content: appendStreamContent(next[index].content, deltaContent),
     };
   }
 
