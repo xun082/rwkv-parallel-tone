@@ -1,6 +1,6 @@
 # RWKV Parallel Tone Converter
 
-![20260427162927](https://raw.githubusercontent.com/xun082/md/main/blogs.images20260427162927.png)
+![20260527144430](https://raw.githubusercontent.com/xun082/md/main/blogs.images20260527144430.png)
 
 Next.js 项目，实现并行语气转换。输入一段文本，AI 将同时生成多种不同风格和语气的表达方式，包括职场、生活、方言、文学、网络等 80+ 种风格。
 
