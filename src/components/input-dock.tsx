@@ -22,7 +22,7 @@ export function InputDock(): React.JSX.Element {
   const canSubmit = userInputSchema.safeParse(input).success;
 
   return (
-    <div className="flex w-full min-w-0 items-end gap-3 rounded-2xl border border-white/[0.1] bg-zinc-900 px-4 py-3.5 shadow-[0_-1px_0_0_rgba(255,255,255,0.05)_inset,0_16px_48px_-12px_rgba(0,0,0,0.7)]">
+    <div className="flex w-full min-w-0 items-end gap-3 rounded-2xl border border-white/10 bg-zinc-900 px-4 py-3.5 shadow-[0_-1px_0_0_rgba(255,255,255,0.05)_inset,0_16px_48px_-12px_rgba(0,0,0,0.7)]">
       <textarea
         ref={inputRef}
         data-tone-input
