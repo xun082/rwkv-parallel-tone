@@ -1,50 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { ToneResultCard } from "@/components/tone-result-card";
-import {
-  REVEAL_BATCH_SIZE,
-  REVEAL_INTERVAL_MS,
-} from "@/lib/motion-presets";
+import { resultsGridStagger } from "@/lib/motion-presets";
 import { useToneSession } from "@/lib/tone-session";
 
 export function ChatView(): React.JSX.Element {
   const { results, copiedIndex, copyResult, isLoading, generationId } =
     useToneSession();
-  const [visibleCount, setVisibleCount] = useState(0);
-
-  useEffect(() => {
-    if (results.length === 0) {
-      setVisibleCount(0);
-      return;
-    }
-
-    let cancelled = false;
-    let count = 0;
-    const total = results.length;
-
-    const tick = () => {
-      if (cancelled) {
-        return;
-      }
-      count = Math.min(count + REVEAL_BATCH_SIZE, total);
-      setVisibleCount(count);
-      if (count < total) {
-        window.setTimeout(tick, REVEAL_INTERVAL_MS);
-      }
-    };
-
-    setVisibleCount(0);
-    const startTimer = window.setTimeout(tick, REVEAL_INTERVAL_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(startTimer);
-    };
-  }, [generationId, results.length]);
-
-  const visibleResults = results.slice(0, visibleCount);
 
   if (results.length === 0) {
     return (
@@ -61,7 +24,7 @@ export function ChatView(): React.JSX.Element {
   return (
     <div className="tone-results-canvas w-full pb-4">
       <AnimatePresence>
-        {isLoading && visibleCount < results.length && (
+        {isLoading && (
           <motion.div
             animate={{ opacity: 1, y: 0 }}
             className="mb-5 flex justify-center"
@@ -75,29 +38,28 @@ export function ChatView(): React.JSX.Element {
               transition={{ duration: 1.8, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
             >
               <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-violet-300 shadow-[0_0_8px_rgba(196,181,253,0.9)]" />
-              角色登场中 {visibleCount}/{results.length}
+              角色登场中
             </motion.span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <LayoutGroup id="tone-results">
-        <motion.div
-          className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-4 sm:grid-cols-[repeat(auto-fill,minmax(13.5rem,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]"
-          layout
-        >
-          <AnimatePresence mode="popLayout" initial={false}>
-            {visibleResults.map((result) => (
-              <ToneResultCard
-                copiedIndex={copiedIndex}
-                key={`${generationId}-${result.index}`}
-                onCopy={copyResult}
-                result={result}
-              />
-            ))}
-          </AnimatePresence>
-        </motion.div>
-      </LayoutGroup>
+      <motion.div
+        animate="show"
+        className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-4 sm:grid-cols-[repeat(auto-fill,minmax(13.5rem,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]"
+        initial="hidden"
+        key={generationId}
+        variants={resultsGridStagger}
+      >
+        {results.map((result) => (
+          <ToneResultCard
+            copiedIndex={copiedIndex}
+            key={`${generationId}-${result.index}`}
+            onCopy={copyResult}
+            result={result}
+          />
+        ))}
+      </motion.div>
     </div>
   );
 }

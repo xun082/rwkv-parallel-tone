@@ -122,7 +122,7 @@ function ToneCard({
     >
       <div className={`absolute -top-12 left-1/2 h-28 w-28 -translate-x-1/2 rounded-full blur-3xl ${t.halo}`} />
       <div className="relative mx-auto h-14 w-full max-w-[6.5rem] overflow-hidden">
-        <StyleAvatar className="mx-auto" height={56} styleName={style} width={84} />
+        <StyleAvatar className="mx-auto" eager height={56} styleName={style} width={84} />
       </div>
       <p className={`relative mt-2 text-center text-[11px] font-semibold tracking-wider uppercase ${t.label}`}>
         {label}

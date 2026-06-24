@@ -109,6 +109,54 @@ body {
   background-position: center -2px;
 }
 
+/* 视口外的语气卡片跳过 layout/paint，首次渲染 87 张卡时显著降低主线程压力 */
+.tone-card-cv {
+  content-visibility: auto;
+  contain-intrinsic-size: 280px 320px;
+}
+
+/* 头像未加载时的轻量占位：柔和渐变 + 缓慢 shimmer，比白屏好看得多 */
+.tone-avatar-skeleton {
+  background:
+    linear-gradient(
+      110deg,
+      rgba(167, 139, 250, 0.06) 0%,
+      rgba(236, 72, 153, 0.08) 45%,
+      rgba(125, 211, 252, 0.06) 100%
+    ),
+    radial-gradient(
+      ellipse at 50% 80%,
+      rgba(255, 255, 255, 0.05),
+      transparent 70%
+    );
+  background-color: rgba(24, 24, 32, 0.5);
+  position: relative;
+  overflow: hidden;
+}
+
+.tone-avatar-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(196, 181, 253, 0.16) 50%,
+    transparent 70%
+  );
+  transform: translateX(-100%);
+  animation: tone-avatar-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes tone-avatar-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 /* 顶部 / 底部分隔线：渐变彩色，告别死板的灰边 */
 .tone-rule-top {
   background-image: linear-gradient(

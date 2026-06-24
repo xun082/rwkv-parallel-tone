@@ -2,15 +2,13 @@
 export const cardPop = {
   hidden: {
     opacity: 0,
-    scale: 0.62,
-    y: 36,
-    filter: "blur(6px)",
+    scale: 0.72,
+    y: 28,
   },
   show: {
     opacity: 1,
     scale: 1,
     y: 0,
-    filter: "blur(0px)",
     transition: {
       type: "spring" as const,
       stiffness: 440,
@@ -20,21 +18,13 @@ export const cardPop = {
   },
 };
 
-export const avatarPop = {
-  hidden: { opacity: 0, scale: 0.45, y: 12 },
+/** 网格容器：用 staggerChildren 让 87 张卡形成波浪式渐入，无需手动 setTimeout */
+export const resultsGridStagger = {
+  hidden: {},
   show: {
-    opacity: 1,
-    scale: 1,
-    y: 0,
     transition: {
-      type: "spring" as const,
-      stiffness: 520,
-      damping: 22,
-      delay: 0.04,
+      staggerChildren: 0.018,
+      delayChildren: 0.04,
     },
   },
 };
-
-/** 每批露出几张卡片（wave） */
-export const REVEAL_BATCH_SIZE = 3;
-export const REVEAL_INTERVAL_MS = 36;

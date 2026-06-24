@@ -3,7 +3,7 @@
 import { memo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { StyleAvatar } from "@/components/style-avatar";
-import { avatarPop, cardPop } from "@/lib/motion-presets";
+import { cardPop } from "@/lib/motion-presets";
 import type { ToneResult } from "@/lib/tone-types";
 
 function cn(...classes: Array<string | null | undefined | false>): string {
@@ -33,26 +33,15 @@ export const ToneResultCard = memo(function ToneResultCard({
 
   return (
     <motion.article
-      animate="show"
       className={cn(
-        "group flex flex-col overflow-hidden rounded-2xl border border-white/[0.07]",
+        "group tone-card-cv flex flex-col overflow-hidden rounded-2xl border border-white/[0.07]",
         "bg-gradient-to-b from-zinc-900/70 via-zinc-900/55 to-zinc-900/35",
         "shadow-[0_14px_40px_-18px_rgba(0,0,0,0.7)]",
         "transition duration-300",
         "hover:border-violet-400/40 hover:from-zinc-900/85 hover:via-zinc-900/65 hover:to-zinc-900/45 hover:shadow-[0_16px_44px_-14px_rgba(139,92,246,0.3)]",
         isStreaming && "border-violet-400/55 from-violet-950/40 via-zinc-900/65 to-zinc-900/45",
       )}
-      exit={{
-        opacity: 0,
-        scale: 0.88,
-        transition: { duration: 0.18, ease: "easeIn" },
-      }}
       id={resultDomId(result.index)}
-      initial="hidden"
-      layout
-      transition={{
-        layout: { type: "spring", stiffness: 380, damping: 28 },
-      }}
       variants={cardPop}
     >
       <div className="relative flex flex-col items-center px-4 pt-4 pb-2 sm:px-5 sm:pt-5">
@@ -62,27 +51,21 @@ export const ToneResultCard = memo(function ToneResultCard({
         />
 
         <motion.div
-          animate="show"
+          animate={isWaiting ? { y: [0, -5, 0] } : { y: 0 }}
           className="relative z-10"
-          initial="hidden"
-          variants={avatarPop}
+          transition={
+            isWaiting
+              ? { duration: 2.8, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }
+              : { type: "spring", stiffness: 400, damping: 28 }
+          }
         >
-          <motion.div
-            animate={isWaiting ? { y: [0, -5, 0] } : { y: 0 }}
-            transition={
-              isWaiting
-                ? { duration: 2.8, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }
-                : { type: "spring", stiffness: 400, damping: 28 }
-            }
-          >
-            <StyleAvatar
-              avatarUrl={result.avatarUrl}
-              height={100}
-              preload={result.index < 12}
-              styleName={result.style}
-              width={168}
-            />
-          </motion.div>
+          <StyleAvatar
+            avatarUrl={result.avatarUrl}
+            eager={result.index < 4}
+            height={100}
+            styleName={result.style}
+            width={168}
+          />
         </motion.div>
 
         <motion.p

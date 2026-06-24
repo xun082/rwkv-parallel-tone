@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
   images: {
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: ONE_YEAR_SECONDS,
+    qualities: [60, 70, 75],
     localPatterns: [
       {
         pathname: "/transparent/**",
