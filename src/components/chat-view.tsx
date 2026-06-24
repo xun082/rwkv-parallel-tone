@@ -50,8 +50,8 @@ export function ChatView(): React.JSX.Element {
     return (
       <div className="grid min-h-[50vh] place-items-center">
         <motion.div
-          animate={{ opacity: [0.4, 1, 0.4], scale: [0.92, 1, 0.92] }}
-          className="h-9 w-9 rounded-full border-2 border-zinc-800 border-t-zinc-400"
+          animate={{ opacity: [0.5, 1, 0.5], scale: [0.92, 1, 0.92] }}
+          className="h-9 w-9 rounded-full border-2 border-violet-500/20 border-t-violet-300 shadow-[0_0_18px_rgba(139,92,246,0.35)]"
           transition={{ duration: 1.2, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
         />
       </div>
@@ -70,10 +70,11 @@ export function ChatView(): React.JSX.Element {
             key="wave-hint"
           >
             <motion.span
-              animate={{ opacity: [0.55, 1, 0.55] }}
-              className="rounded-full bg-zinc-900/80 px-4 py-1.5 text-xs text-zinc-500 backdrop-blur-sm"
+              animate={{ opacity: [0.7, 1, 0.7] }}
+              className="inline-flex items-center gap-2 rounded-full border border-violet-400/30 bg-gradient-to-r from-violet-500/15 to-fuchsia-500/15 px-4 py-1.5 text-xs text-violet-100 shadow-[0_4px_18px_-6px_rgba(139,92,246,0.5)] backdrop-blur-sm"
               transition={{ duration: 1.8, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
             >
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-violet-300 shadow-[0_0_8px_rgba(196,181,253,0.9)]" />
               角色登场中 {visibleCount}/{results.length}
             </motion.span>
           </motion.div>

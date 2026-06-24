@@ -164,9 +164,10 @@ export function PromptEditor({ onClose, onSaved }: PromptEditorProps): React.JSX
               </button>
             </div>
             <p className="mb-3 text-xs text-zinc-500">
-              留空则使用 <code className="rounded bg-zinc-800 px-1 text-zinc-300">.env.local</code>{" "}
+              优先使用 <code className="rounded bg-zinc-800 px-1 text-zinc-300">.env.local</code>{" "}
               中的 <code className="rounded bg-zinc-800 px-1 text-zinc-300">RWKV_API_URL</code> /{" "}
-              <code className="rounded bg-zinc-800 px-1 text-zinc-300">RWKV_PASSWORD</code>。
+              <code className="rounded bg-zinc-800 px-1 text-zinc-300">RWKV_PASSWORD</code>；当 env
+              未配置（如线上）时，才会用这里填写的值兜底。
             </p>
             {settingsError && (
               <p className="mb-3 text-xs text-amber-400">{settingsError}</p>

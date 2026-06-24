@@ -1,5 +1,3 @@
-import { stripEmptyLines } from "@/lib/prompt-rules";
-
 export interface StreamChoice {
   index?: number;
   delta?: {
@@ -16,16 +14,6 @@ export interface StreamResultSlice {
   icon: string;
 }
 
-/** 去掉 RWKV 输出里常见的 ✿ / Bot 前缀标记 */
-export function sanitizeStreamDelta(text: string): string {
-  return text.replace(/✿/g, "").replace(/^Bot\s*/i, "");
-}
-
-function appendStreamContent(existing: string, delta: string): string {
-  const combined = existing + delta;
-  return stripEmptyLines(combined);
-}
-
 export function applyStreamChoices<T extends StreamResultSlice>(
   results: T[],
   choices: StreamChoice[],
@@ -34,14 +22,14 @@ export function applyStreamChoices<T extends StreamResultSlice>(
 
   for (const choice of choices) {
     const index = typeof choice.index === "number" ? choice.index : -1;
-    const deltaContent = sanitizeStreamDelta(choice.delta?.content ?? "");
+    const deltaContent = choice.delta?.content ?? "";
     if (!deltaContent || index < 0 || index >= next.length) {
       continue;
     }
 
     next[index] = {
       ...next[index],
-      content: appendStreamContent(next[index].content, deltaContent),
+      content: next[index].content + deltaContent,
     };
   }
 

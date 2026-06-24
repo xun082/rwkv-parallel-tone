@@ -14,7 +14,7 @@ interface StyleAvatarProps {
   width?: number;
   height?: number;
   className?: string;
-  priority?: boolean;
+  preload?: boolean;
 }
 
 export function StyleAvatar({
@@ -23,7 +23,7 @@ export function StyleAvatar({
   width = 120,
   height = 78,
   className,
-  priority = false,
+  preload = false,
 }: StyleAvatarProps): React.JSX.Element {
   const src = avatarUrl ?? getStyleAvatarUrl(styleName);
 
@@ -39,9 +39,8 @@ export function StyleAvatar({
         alt={`${styleName}（双人）`}
         className="h-full w-full object-contain object-bottom drop-shadow-[0_10px_28px_rgba(0,0,0,0.55)]"
         height={height}
-        priority={priority}
+        preload={preload}
         src={src}
-        unoptimized
         width={width}
       />
     </div>

@@ -35,11 +35,12 @@ export const ToneResultCard = memo(function ToneResultCard({
     <motion.article
       animate="show"
       className={cn(
-        "group flex flex-col overflow-hidden rounded-2xl",
-        "bg-zinc-900/55 shadow-[0_12px_36px_-16px_rgba(0,0,0,0.7)]",
-        "transition-[background-color] duration-300",
-        "hover:bg-zinc-900/75",
-        isStreaming && "bg-zinc-900/70",
+        "group flex flex-col overflow-hidden rounded-2xl border border-white/[0.07]",
+        "bg-gradient-to-b from-zinc-900/70 via-zinc-900/55 to-zinc-900/35",
+        "shadow-[0_14px_40px_-18px_rgba(0,0,0,0.7)]",
+        "transition duration-300",
+        "hover:border-violet-400/40 hover:from-zinc-900/85 hover:via-zinc-900/65 hover:to-zinc-900/45 hover:shadow-[0_16px_44px_-14px_rgba(139,92,246,0.3)]",
+        isStreaming && "border-violet-400/55 from-violet-950/40 via-zinc-900/65 to-zinc-900/45",
       )}
       exit={{
         opacity: 0,
@@ -57,7 +58,7 @@ export const ToneResultCard = memo(function ToneResultCard({
       <div className="relative flex flex-col items-center px-4 pt-4 pb-2 sm:px-5 sm:pt-5">
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-8 top-8 h-28 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.07),transparent_70%)]"
+          className="pointer-events-none absolute inset-x-8 top-8 h-28 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(196,181,253,0.16),transparent_70%)]"
         />
 
         <motion.div
@@ -77,7 +78,7 @@ export const ToneResultCard = memo(function ToneResultCard({
             <StyleAvatar
               avatarUrl={result.avatarUrl}
               height={100}
-              priority={result.index < 12}
+              preload={result.index < 12}
               styleName={result.style}
               width={168}
             />
@@ -102,8 +103,8 @@ export const ToneResultCard = memo(function ToneResultCard({
           </motion.p>
         )}
         {isStreaming && (
-          <p className="mt-0.5 flex items-center gap-1 text-[10px] text-zinc-500">
-            <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-zinc-400" />
+          <p className="mt-0.5 flex items-center gap-1 text-[10px] text-violet-300">
+            <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-violet-400 shadow-[0_0_6px_rgba(167,139,250,0.9)]" />
             生成中
           </p>
         )}
@@ -157,8 +158,8 @@ export const ToneResultCard = memo(function ToneResultCard({
                   className={cn(
                     "mt-2.5 text-[11px] transition",
                     isCopied
-                      ? "text-zinc-300"
-                      : "text-zinc-500 hover:text-zinc-300",
+                      ? "text-violet-300"
+                      : "text-zinc-500 hover:text-violet-300",
                   )}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}

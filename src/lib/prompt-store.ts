@@ -1,4 +1,3 @@
-import { normalizePrompt } from "@/lib/prompt-rules";
 import { STYLE_CONFIGS, type StyleConfig } from "@/lib/style-configs";
 
 const PROMPT_CUSTOMIZATIONS_KEY = "style_prompt_customizations";
@@ -12,13 +11,8 @@ export function saveCustomPrompts(customizations: Record<string, string>): void 
     return;
   }
 
-  const normalized: Record<string, string> = {};
-  for (const [name, prompt] of Object.entries(customizations)) {
-    normalized[name] = normalizePrompt(prompt);
-  }
-
   try {
-    localStorage.setItem(PROMPT_CUSTOMIZATIONS_KEY, JSON.stringify(normalized));
+    localStorage.setItem(PROMPT_CUSTOMIZATIONS_KEY, JSON.stringify(customizations));
   } catch (error) {
     console.error("Failed to save custom prompts:", error);
   }

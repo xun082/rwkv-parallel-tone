@@ -70,7 +70,9 @@ export function resetApiSettings(): void {
   localStorage.removeItem(API_SETTINGS_KEY);
 }
 
-/** 校验通过后，仅有值的字段会覆盖服务端 .env.local */
+/**
+ * 服务端解析时 env 优先；这里上传的字段仅在对应 env 为空（如线上未注入 env）时生效，作为兜底。
+ */
 export function getApiSettingsPayload(): { apiUrl?: string; password?: string } {
   const { apiUrl, password } = loadApiSettings();
   return {

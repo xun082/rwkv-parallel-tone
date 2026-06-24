@@ -20,7 +20,7 @@ export default function ChatPage(): React.JSX.Element {
 
   if (!shouldShowChat) {
     return (
-      <p className="grid min-h-[30vh] place-items-center text-sm text-zinc-500">
+      <p className="grid min-h-[30vh] place-items-center text-sm text-zinc-400">
         正在返回首页…
       </p>
     );
@@ -29,16 +29,22 @@ export default function ChatPage(): React.JSX.Element {
   return (
     <div className="w-full">
       {generateError && (
-        <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-950/80 px-3 py-2.5 text-sm text-amber-100">
-          {generateError}
+        <div className="mx-auto mb-5 flex max-w-3xl items-start gap-2.5 rounded-xl border border-rose-400/40 bg-gradient-to-r from-rose-500/15 via-rose-500/10 to-orange-500/10 px-4 py-3 text-sm text-rose-100 shadow-[0_8px_24px_-12px_rgba(244,63,94,0.5)] backdrop-blur-sm">
+          <span
+            aria-hidden
+            className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-rose-400/25 text-[10px] font-bold text-rose-200"
+          >
+            !
+          </span>
+          <span className="leading-relaxed">{generateError}</span>
         </div>
       )}
 
       <ChatView />
 
-      <p className="mt-8 text-center">
+      <p className="mt-10 text-center">
         <Link
-          className="text-xs text-zinc-600 transition hover:text-zinc-400"
+          className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-zinc-900/40 px-3 py-1 text-xs text-zinc-400 backdrop-blur-sm transition hover:border-violet-400/40 hover:bg-violet-500/10 hover:text-violet-200"
           href="/"
         >
           ← 返回首页

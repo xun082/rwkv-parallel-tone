@@ -1,8 +1,14 @@
+/**
+ * 上游 RWKV 的采样参数。
+ *
+ * prompt 包裹格式（见 rwkv-payload.ts）：
+ *   {systemPrompt}\n\nUser: {userInput}\n\nAssistant:<think>\n</think>
+ */
 export const RWKV_MODEL_PARAMS = {
-  max_tokens: 150,
+  max_tokens: 320,
   temperature: 0.95,
   top_k: 50,
-  top_p: 0.9,
+  top_p: 0.5,
   pad_zero: true,
   alpha_presence: 1.0,
   alpha_frequency: 1.0,
@@ -22,14 +28,18 @@ export function getEnvRwkvConfig(): { apiUrl: string; password: string } {
   };
 }
 
+/**
+ * env 优先：本地/自部署只要配了 .env.local，永远以 env 为准；
+ * 仅当 env 中对应字段为空（如部分线上环境没注入 env）时，才回退到前端传来的 UI 配置。
+ */
 export function resolveServerApiConfig(overrides?: {
   apiUrl?: string;
   password?: string;
 }): { apiUrl: string; password: string } {
   const env = getEnvRwkvConfig();
   return {
-    apiUrl: overrides?.apiUrl ?? env.apiUrl,
-    password: overrides?.password ?? env.password,
+    apiUrl: env.apiUrl || overrides?.apiUrl || "",
+    password: env.password || overrides?.password || "",
   };
 }
 
