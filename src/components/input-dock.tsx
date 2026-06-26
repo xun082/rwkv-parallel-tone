@@ -1,12 +1,14 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useToneSession } from "@/lib/tone-session";
 import { useAutogrowTextarea } from "@/lib/use-autogrow-textarea";
 import { userInputSchema } from "@/lib/schemas";
 
 export function InputDock(): React.JSX.Element {
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [hoverCancel, setHoverCancel] = useState(false);
 
   const { input, setInput, isLoading, startGenerate, cancelGenerate } = useToneSession();
 
@@ -40,11 +42,70 @@ export function InputDock(): React.JSX.Element {
 
       {isLoading ? (
         <button
-          className="shrink-0 rounded-xl border border-amber-400/40 bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-200 transition hover:border-amber-400/70 hover:bg-amber-500/25 hover:text-amber-100"
+          aria-label="正在生成，点击停止"
+          className="group/cancel relative shrink-0 overflow-hidden rounded-xl px-5 py-2 text-sm font-semibold transition"
           onClick={cancelGenerate}
+          onMouseEnter={() => setHoverCancel(true)}
+          onMouseLeave={() => setHoverCancel(false)}
           type="button"
         >
-          停止
+          <motion.span
+            aria-hidden
+            animate={{
+              backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
+            }}
+            className="absolute inset-0 rounded-xl bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500 opacity-90"
+            style={{ backgroundSize: "200% 200%" }}
+            transition={{ duration: 3, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
+          />
+          <motion.span
+            aria-hidden
+            animate={{ opacity: [0.35, 0.85, 0.35] }}
+            className="absolute -inset-px rounded-xl bg-gradient-to-r from-violet-400/60 via-fuchsia-400/60 to-pink-400/60 blur-md"
+            transition={{ duration: 1.8, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
+          />
+          <span className="relative z-10 flex h-5 min-w-[2.5rem] items-center justify-center gap-1 text-white">
+            <AnimatePresence initial={false} mode="wait">
+              {hoverCancel ? (
+                <motion.span
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="text-xs font-semibold tracking-wider"
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  key="stop-text"
+                  transition={{ duration: 0.16, ease: "easeOut" }}
+                >
+                  停止
+                </motion.span>
+              ) : (
+                <motion.span
+                  animate={{ opacity: 1 }}
+                  className="flex items-center gap-[5px]"
+                  exit={{ opacity: 0 }}
+                  initial={{ opacity: 0 }}
+                  key="dots"
+                  transition={{ duration: 0.16, ease: "easeOut" }}
+                >
+                  {[0, 1, 2].map((i) => (
+                    <motion.span
+                      animate={{
+                        y: [0, -4, 0],
+                        opacity: [0.55, 1, 0.55],
+                      }}
+                      className="block h-1.5 w-1.5 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.85)]"
+                      key={i}
+                      transition={{
+                        duration: 1.1,
+                        repeat: Number.POSITIVE_INFINITY,
+                        ease: "easeInOut",
+                        delay: i * 0.18,
+                      }}
+                    />
+                  ))}
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </span>
         </button>
       ) : (
         <button

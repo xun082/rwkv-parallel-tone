@@ -6,8 +6,6 @@ export interface ToneResult {
   style: string;
   content: string;
   isComplete: boolean;
-  color: string;
-  icon: string;
   avatarUrl: string;
 }
 
@@ -17,8 +15,6 @@ export function buildInitialResults(configs: StyleConfig[]): ToneResult[] {
     style: config.name,
     content: "",
     isComplete: false,
-    color: config.color,
-    icon: config.icon,
     avatarUrl: getStyleAvatarUrl(config.name),
   }));
 }

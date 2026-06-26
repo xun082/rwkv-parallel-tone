@@ -10,8 +10,6 @@ export interface StreamResultSlice {
   style: string;
   content: string;
   isComplete: boolean;
-  color: string;
-  icon: string;
 }
 
 export function applyStreamChoices<T extends StreamResultSlice>(
