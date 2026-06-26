@@ -62,9 +62,9 @@ export const ToneResultCard = memo(function ToneResultCard({
           <StyleAvatar
             avatarUrl={result.avatarUrl}
             eager={result.index < 4}
-            height={100}
+            height={76}
             styleName={result.style}
-            width={168}
+            width={128}
           />
         </motion.div>
 
