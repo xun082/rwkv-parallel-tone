@@ -27,7 +27,7 @@ export function InputDock(): React.JSX.Element {
     <div className="group relative flex w-full min-w-0 items-end gap-3 rounded-2xl border border-violet-400/25 bg-zinc-900/75 px-4 py-3.5 shadow-[0_-1px_0_0_rgba(255,255,255,0.06)_inset,0_20px_60px_-20px_rgba(139,92,246,0.45)] backdrop-blur-xl transition-colors focus-within:border-violet-400/55 focus-within:bg-zinc-900/85 hover:border-violet-400/40">
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-x-6 -top-px h-px bg-gradient-to-r from-transparent via-violet-400/60 to-transparent opacity-60 transition group-focus-within:opacity-100"
+        className="pointer-events-none absolute inset-x-6 -top-px h-px bg-linear-to-r from-transparent via-violet-400/60 to-transparent opacity-60 transition group-focus-within:opacity-100"
       />
       <textarea
         ref={inputRef}
@@ -54,7 +54,7 @@ export function InputDock(): React.JSX.Element {
             animate={{
               backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
             }}
-            className="absolute inset-0 rounded-xl bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500 opacity-90"
+            className="absolute inset-0 rounded-xl bg-linear-to-r from-violet-500 via-fuchsia-500 to-pink-500 opacity-90"
             style={{ backgroundSize: "200% 200%" }}
             transition={{ duration: 3, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
           />
