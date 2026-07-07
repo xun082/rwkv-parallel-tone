@@ -30,6 +30,127 @@ function safeUpstreamPayload(payload: UpstreamPayload): Record<string, unknown> 
   return clone;
 }
 
+/**
+ * 上游对单次批量的总量有硬限制：整批 prompt 过大（实测 88 条 × ~780 字符）时
+ * 会返回 200 但静默断流，一个 token 都不给；且同一时刻只允许一个批量在跑
+ * （否则 409）。因此把 contents 拆成小批串行发送，回传时把批内 index
+ * 重映射为全局 index，前端无感知。32 条/批经实测稳定。
+ */
+const UPSTREAM_CHUNK_SIZE = 32;
+const INTER_CHUNK_DELAY_MS = 500;
+const BUSY_RETRY_DELAY_MS = 1200;
+const MAX_BUSY_RETRIES = 3;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface UpstreamChunk {
+  offset: number;
+  body: Record<string, unknown>;
+}
+
+function buildChunkBodies(
+  payload: UpstreamPayload,
+  chunkSize: number,
+): UpstreamChunk[] {
+  const contents = Array.isArray(payload.contents)
+    ? (payload.contents as string[])
+    : [];
+  const chunks: UpstreamChunk[] = [];
+  for (let offset = 0; offset < contents.length; offset += chunkSize) {
+    chunks.push({
+      offset,
+      body: { ...payload, contents: contents.slice(offset, offset + chunkSize) },
+    });
+  }
+  return chunks;
+}
+
+/** 发送单批请求；上游忙（409）时等待后重试 */
+async function fetchUpstreamChunk(
+  apiUrl: string,
+  chunk: UpstreamChunk,
+  signal: AbortSignal,
+): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream, application/json",
+      },
+      body: JSON.stringify(chunk.body),
+      signal,
+      cache: "no-store",
+    });
+    if (response.status !== 409 || attempt >= MAX_BUSY_RETRIES) {
+      return response;
+    }
+    await response.body?.cancel().catch(() => undefined);
+    await sleep(BUSY_RETRY_DELAY_MS);
+  }
+}
+
+/** 读取单批上游 SSE，把批内 index 重映射为全局 index 后转发；返回转发的事件数 */
+async function pumpChunkToClient(
+  body: ReadableStream<Uint8Array>,
+  offset: number,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+): Promise<number> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+  let events = 0;
+
+  const emitLine = (rawLine: string) => {
+    const line = rawLine.trim();
+    if (!line.startsWith("data: ")) {
+      return;
+    }
+    const payload = line.slice(6);
+    if (payload === "[DONE]") {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(payload) as { choices?: { index?: number }[] };
+      if (Array.isArray(parsed.choices)) {
+        for (const choice of parsed.choices) {
+          if (typeof choice.index === "number") {
+            choice.index += offset;
+          }
+        }
+      }
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(parsed)}\n\n`));
+      events += 1;
+    } catch {
+      // 忽略偶发的非 JSON 行
+    }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        emitLine(line);
+      }
+    }
+    if (buffer) {
+      emitLine(buffer);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return events;
+}
+
 function makeRunId(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -143,19 +264,13 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
+  const chunks = buildChunkBodies(upstreamPayload, UPSTREAM_CHUNK_SIZE);
+
+  // 预检第一批：连接失败/鉴权失败仍走 JSON 错误返回，避免给前端一个空的 200 流
   let upstreamResponse: Response;
   const upstreamStartAt = Date.now();
   try {
-    upstreamResponse = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "text/event-stream, application/json",
-      },
-      body: JSON.stringify(upstreamPayload),
-      signal: request.signal,
-      cache: "no-store",
-    });
+    upstreamResponse = await fetchUpstreamChunk(apiUrl, chunks[0], request.signal);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "无法连接上游 RWKV 服务";
@@ -215,11 +330,76 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  let clientBody: ReadableStream<Uint8Array> = upstreamResponse.body;
+  const firstResponse = upstreamResponse;
+  const encoder = new TextEncoder();
+  let clientBody = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for (let i = 0; i < chunks.length; i++) {
+          if (request.signal.aborted) {
+            break;
+          }
+          // 单批静默失败（200 但没有任何 data 事件）时重试一次
+          for (let attempt = 0; attempt < 2; attempt++) {
+            let response: Response;
+            if (i === 0 && attempt === 0) {
+              response = firstResponse;
+            } else {
+              await sleep(INTER_CHUNK_DELAY_MS);
+              try {
+                response = await fetchUpstreamChunk(
+                  apiUrl,
+                  chunks[i],
+                  request.signal,
+                );
+              } catch (error) {
+                console.warn(
+                  `[/api/generate] run ${runId} chunk ${i} connect error:`,
+                  error instanceof Error ? error.message : error,
+                );
+                break;
+              }
+              if (!response.ok || !response.body) {
+                const detail = await response.text().catch(() => "");
+                console.warn(
+                  `[/api/generate] run ${runId} chunk ${i} bad response ${response.status}: ${detail.slice(0, 200)}`,
+                );
+                continue;
+              }
+            }
+            const events = await pumpChunkToClient(
+              response.body as ReadableStream<Uint8Array>,
+              chunks[i].offset,
+              controller,
+            );
+            if (events > 0) {
+              break;
+            }
+            console.warn(
+              `[/api/generate] run ${runId} chunk ${i} empty stream (attempt ${attempt + 1}/2)`,
+            );
+          }
+        }
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      } catch (error) {
+        // 客户端断开或上游流中断：结束响应即可
+        console.warn(
+          `[/api/generate] run ${runId} stream interrupted:`,
+          error instanceof Error ? error.message : error,
+        );
+      } finally {
+        try {
+          controller.close();
+        } catch {
+          // controller 可能已因客户端断开而关闭
+        }
+      }
+    },
+  });
   if (logBaseDir) {
     const ssePath = join(logBaseDir, `${runId}.response.sse`);
     clientBody = teeUpstreamToFile(
-      upstreamResponse.body,
+      clientBody,
       ssePath,
       ({ bytes, ms, error }) => {
         const head = `[/api/generate] run ${runId} done in ${ms}ms, ${bytes} bytes → ${ssePath}`;
