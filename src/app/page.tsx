@@ -6,7 +6,7 @@ import { STYLE_CONFIGS } from "@/lib/style-configs";
 import { useToneSession } from "@/lib/tone-session";
 
 const STYLE_COUNT = STYLE_CONFIGS.length;
-const HOME_EXAMPLES = EXAMPLE_PROMPTS.slice(0, 8);
+const HOME_EXAMPLES = EXAMPLE_PROMPTS.slice(0, 10);
 
 const SAMPLE_INPUT = "今天路上堵得厉害，可能会晚点到。";
 
@@ -71,6 +71,8 @@ const TAG_COLOR: Record<string, string> = {
   协作: "bg-fuchsia-500/15 text-fuchsia-300 ring-1 ring-fuchsia-400/30",
   思考: "bg-indigo-500/15 text-indigo-300 ring-1 ring-indigo-400/30",
   直播: "bg-orange-500/15 text-orange-300 ring-1 ring-orange-400/30",
+  亲子: "bg-cyan-500/15 text-cyan-300 ring-1 ring-cyan-400/30",
+  医护: "bg-teal-500/15 text-teal-300 ring-1 ring-teal-400/30",
 };
 
 const TAG_DEFAULT =
