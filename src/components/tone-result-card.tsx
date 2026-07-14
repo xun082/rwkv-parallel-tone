@@ -4,6 +4,7 @@ import { memo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { StyleAvatar } from "@/components/style-avatar";
 import { cardPop } from "@/lib/motion-presets";
+import { BLOCKED_CONTENT_PLACEHOLDER } from "@/lib/guard-messages";
 import type { ToneResult } from "@/lib/tone-types";
 
 function cn(...classes: Array<string | null | undefined | false>): string {
@@ -25,9 +26,10 @@ export const ToneResultCard = memo(function ToneResultCard({
   copiedIndex,
   onCopy,
 }: ToneResultCardProps): React.JSX.Element {
+  const isBlocked = result.blocked;
   const hasContent = result.content.length > 0;
   const isWaiting = !hasContent && !result.isComplete;
-  const isStreaming = hasContent && !result.isComplete;
+  const isStreaming = !isBlocked && hasContent && !result.isComplete;
   const isCopied = copiedIndex === result.index;
   const showBody = hasContent || result.isComplete;
 
@@ -114,7 +116,17 @@ export const ToneResultCard = memo(function ToneResultCard({
               initial={{ opacity: 0, y: 10 }}
               transition={{ type: "spring", stiffness: 400, damping: 28 }}
             >
-              {hasContent ? (
+              {isBlocked ? (
+                <motion.p
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="flex items-center justify-center gap-1.5 rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-3 text-center text-[13px] leading-[1.6] text-amber-200/90"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  layout
+                  transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                >
+                  {BLOCKED_CONTENT_PLACEHOLDER}
+                </motion.p>
+              ) : hasContent ? (
                 <motion.p
                   animate={{ opacity: 1, scale: 1 }}
                   className="tone-scrollbar max-h-52 overflow-y-auto whitespace-pre-wrap text-[14px] leading-[1.75] text-zinc-200/92 sm:text-[15px]"
@@ -136,7 +148,7 @@ export const ToneResultCard = memo(function ToneResultCard({
                 <p className="py-2 text-center text-[12px] text-zinc-600">暂无返回内容</p>
               )}
 
-              {result.isComplete && hasContent && (
+              {result.isComplete && hasContent && !isBlocked && (
                 <motion.button
                   className={cn(
                     "mt-2.5 text-[11px] transition",

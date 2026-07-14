@@ -6,6 +6,7 @@ export interface ToneResult {
   style: string;
   content: string;
   isComplete: boolean;
+  blocked: boolean;
   avatarUrl: string;
 }
 
@@ -15,6 +16,7 @@ export function buildInitialResults(configs: StyleConfig[]): ToneResult[] {
     style: config.name,
     content: "",
     isComplete: false,
+    blocked: false,
     avatarUrl: getStyleAvatarUrl(config.name),
   }));
 }

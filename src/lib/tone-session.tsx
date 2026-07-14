@@ -12,6 +12,7 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import { getApiSettingsPayload } from "@/lib/api-settings-store";
 import { GenerateRequestError, runBatchGenerate } from "@/lib/generate-client";
+import { BLOCKED_INPUT_MESSAGE } from "@/lib/guard-messages";
 import { getMergedStyleConfigs } from "@/lib/prompt-store";
 import { formatZodError, userInputSchema } from "@/lib/schemas";
 import { buildInitialResults, type ToneResult } from "@/lib/tone-types";
@@ -91,6 +92,25 @@ export function ToneSessionProvider({
     if (!inputResult.success) {
       setGenerateError(formatZodError(inputResult.error));
       return;
+    }
+
+    // 输入敏感词预检：只回传布尔值，词表留在服务端。预检不可用时放行，
+    // 交由 /api/generate 兜底（命中会返回 422）。
+    try {
+      const screenResponse = await fetch("/api/screen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: inputResult.data }),
+      });
+      if (screenResponse.ok) {
+        const { blocked } = (await screenResponse.json()) as { blocked?: boolean };
+        if (blocked) {
+          setGenerateError(BLOCKED_INPUT_MESSAGE);
+          return;
+        }
+      }
+    } catch {
+      // 预检不可用：继续，交由服务端生成时兜底
     }
 
     const mergedConfigs = getMergedStyleConfigs();

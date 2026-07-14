@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { buildUpstreamBody } from "@/lib/rwkv-payload";
 import { resolveServerApiConfig, toSafeApiLabel } from "@/lib/rwkv-config";
 import { formatZodError, generateRequestSchema } from "@/lib/schemas";
+import type { SensitiveFilterMatcher } from "@/lib/sensitive-filter";
+import { getServerSensitiveGuard } from "@/lib/sensitive-guard.server";
 import { STYLE_CONFIGS } from "@/lib/style-configs";
 
 export const runtime = "nodejs";
@@ -92,17 +94,56 @@ async function fetchUpstreamChunk(
   }
 }
 
-/** 读取单批上游 SSE，把批内 index 重映射为全局 index 后转发；返回转发的事件数 */
+interface UpstreamChoice {
+  index?: number;
+  delta?: { content?: string };
+  blocked?: boolean;
+}
+
+/** 逐 style 累积输出并过滤敏感词的共享状态，跨批次持续 */
+interface OutputScreen {
+  guard: SensitiveFilterMatcher;
+  accumulated: Map<number, string>;
+  blocked: Set<number>;
+}
+
+/**
+ * 读取单批上游 SSE，把批内 index 重映射为全局 index 后转发；返回转发的事件数。
+ * 若提供 [screen]，则逐 style 累积文本并过滤敏感词：命中后不再转发该 style 的
+ * 原始增量（既不落客户端也不落调试日志），改为发送一次 blocked 控制事件。
+ */
 async function pumpChunkToClient(
   body: ReadableStream<Uint8Array>,
   offset: number,
   controller: ReadableStreamDefaultController<Uint8Array>,
+  screen: OutputScreen | null,
 ): Promise<number> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let buffer = "";
   let events = 0;
+
+  const screenChoice = (choice: UpstreamChoice): UpstreamChoice | null => {
+    if (!screen || typeof choice.index !== "number") {
+      return choice;
+    }
+    const gi = choice.index;
+    if (screen.blocked.has(gi)) {
+      return null; // 已屏蔽：丢弃后续增量
+    }
+    const delta = choice.delta?.content ?? "";
+    if (!delta) {
+      return choice;
+    }
+    const acc = (screen.accumulated.get(gi) ?? "") + delta;
+    screen.accumulated.set(gi, acc);
+    if (screen.guard.isSensitive(acc)) {
+      screen.blocked.add(gi);
+      return { index: gi, blocked: true };
+    }
+    return choice;
+  };
 
   const emitLine = (rawLine: string) => {
     const line = rawLine.trim();
@@ -114,13 +155,22 @@ async function pumpChunkToClient(
       return;
     }
     try {
-      const parsed = JSON.parse(payload) as { choices?: { index?: number }[] };
+      const parsed = JSON.parse(payload) as { choices?: UpstreamChoice[] };
       if (Array.isArray(parsed.choices)) {
+        const outChoices: UpstreamChoice[] = [];
         for (const choice of parsed.choices) {
           if (typeof choice.index === "number") {
             choice.index += offset;
           }
+          const screened = screenChoice(choice);
+          if (screened) {
+            outChoices.push(screened);
+          }
         }
+        if (outChoices.length === 0) {
+          return;
+        }
+        parsed.choices = outChoices;
       }
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(parsed)}\n\n`));
       events += 1;
@@ -211,6 +261,20 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400 },
     );
   }
+
+  // 敏感词过滤：词表已内联进服务端构建，直接同步取用。
+  const guard: SensitiveFilterMatcher = getServerSensitiveGuard();
+
+  if (guard.isSensitive(parsed.data.userInput)) {
+    return Response.json(
+      { code: "BLOCKED_INPUT", error: "输入包含敏感内容，已拦截，请修改后重试" },
+      { status: 422 },
+    );
+  }
+
+  const outputScreen: OutputScreen | null = guard.isEmpty
+    ? null
+    : { guard, accumulated: new Map<number, string>(), blocked: new Set<number>() };
 
   const { apiUrl, password } = resolveServerApiConfig({
     apiUrl: parsed.data.apiUrl,
@@ -371,6 +435,7 @@ export async function POST(request: Request): Promise<Response> {
               response.body as ReadableStream<Uint8Array>,
               chunks[i].offset,
               controller,
+              outputScreen,
             );
             if (events > 0) {
               break;

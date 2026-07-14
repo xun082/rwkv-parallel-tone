@@ -3,6 +3,8 @@ export interface StreamChoice {
   delta?: {
     content?: string;
   };
+  /** Control flag from the server: this slice hit a listed word and is blocked. */
+  blocked?: boolean;
 }
 
 export interface StreamResultSlice {
@@ -10,6 +12,7 @@ export interface StreamResultSlice {
   style: string;
   content: string;
   isComplete: boolean;
+  blocked: boolean;
 }
 
 export function applyStreamChoices<T extends StreamResultSlice>(
@@ -20,8 +23,20 @@ export function applyStreamChoices<T extends StreamResultSlice>(
 
   for (const choice of choices) {
     const index = typeof choice.index === "number" ? choice.index : -1;
+    if (index < 0 || index >= next.length) {
+      continue;
+    }
+    // Once a slice is blocked it stays blocked; drop any trailing deltas.
+    if (next[index].blocked) {
+      continue;
+    }
+    if (choice.blocked) {
+      next[index] = { ...next[index], blocked: true, isComplete: true };
+      continue;
+    }
+
     const deltaContent = choice.delta?.content ?? "";
-    if (!deltaContent || index < 0 || index >= next.length) {
+    if (!deltaContent) {
       continue;
     }
 
