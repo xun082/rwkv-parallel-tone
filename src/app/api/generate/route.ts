@@ -10,6 +10,7 @@ import { STYLE_CONFIGS } from "@/lib/style-configs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const LOG_DIR = join(process.cwd(), ".tone-logs");
 const DEBUG_LOG_ENABLED = process.env.NODE_ENV !== "production";
@@ -283,7 +284,11 @@ export async function POST(request: Request): Promise<Response> {
 
   if (!apiUrl) {
     return Response.json(
-      { code: "MISSING_API_URL", error: "请在 .env.local 配置 RWKV_API_URL" },
+      {
+        code: "MISSING_API_URL",
+        error:
+          "请在 .env 配置 RWKV_API_URL（例如 http://192.168.0.12:8000/v1/chat/completions）",
+      },
       { status: 500 },
     );
   }
@@ -366,7 +371,7 @@ export async function POST(request: Request): Promise<Response> {
     const isAuthError = upstreamStatus === 401 || upstreamStatus === 403;
     const responseStatus = upstreamStatus >= 500 ? 502 : upstreamStatus;
     const message = isAuthError
-      ? "密码错误或无权访问 big_batch/completions"
+      ? "密码错误或无权访问 /v1/chat/completions"
       : `上游请求失败 (${upstreamStatus})`;
 
     console.error("[/api/generate] bad response:", {

@@ -29,14 +29,14 @@ pnpm start
 
 ## API 配置
 
-在根目录创建 `.env.local`（可参考 `.env.example`）：
+在根目录创建 `.env` 或 `.env.local`（可参考 `.env.example`）：
 
 ```bash
-RWKV_API_URL=http://your-host:1800/big_batch/completions
+RWKV_API_URL=http://192.168.0.12:8000/v1/chat/completions
 RWKV_PASSWORD=your_password
 ```
 
-请求经 Next.js 服务端路由 `/api/generate` 转发到上游 RWKV 服务。
+请求经 Next.js 服务端路由 `/api/generate` 转发到上游 `/v1/chat/completions` 批量接口。
 
 ## 项目结构
 

@@ -181,7 +181,7 @@ export function PromptEditor({ onClose, onSaved }: PromptEditorProps): React.JSX
                   onChange={(event) =>
                     setApiSettings((prev) => ({ ...prev, apiUrl: event.target.value }))
                   }
-                  placeholder="留空则使用 RWKV_API_URL"
+                  placeholder="留空则使用 RWKV_API_URL，例如 http://192.168.0.12:8000/v1/chat/completions"
                   type="url"
                   autoComplete="off"
                 />
