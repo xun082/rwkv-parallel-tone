@@ -32,7 +32,7 @@ pnpm start
 在根目录创建 `.env` 或 `.env.local`（可参考 `.env.example`）：
 
 ```bash
-RWKV_API_URL=http://192.168.0.12:8000/v1/chat/completions
+RWKV_API_URL=http://192.168.0.115:8030/v1/chat/completions
 RWKV_PASSWORD=your_password
 ```
 

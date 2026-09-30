@@ -2,17 +2,19 @@
  * 上游 RWKV 的采样参数。字段对齐 vibe-code 的 /v1/chat/completions 批量接口。
  *
  * prompt 包裹格式（见 rwkv-payload.ts）：
- *   {systemPrompt}\n\nUser: {userInput}\n\nAssistant:<think>\n</think>
+ *   {systemPrompt}\n\nUser: {userInput}\n\nAssistant: <think></think
+ *
+ * 采样字段对齐 vibe-code 的批量补全。max_tokens 用 2000。
  */
 export const RWKV_MODEL_PARAMS = {
-  max_tokens: 320,
-  temperature: 0.95,
-  top_k: 50,
+  max_tokens: 2000,
+  temperature: 1.0,
+  top_k: 60,
   top_p: 0.5,
   pad_zero: true,
   alpha_presence: 1.0,
-  alpha_frequency: 1.0,
-  alpha_decay: 0.996,
+  alpha_frequency: 0.1,
+  alpha_decay: 0.99,
   chunk_size: 128,
   stream: true,
   enable_think: false,

@@ -7,6 +7,7 @@ import { formatZodError, generateRequestSchema } from "@/lib/schemas";
 import type { SensitiveFilterMatcher } from "@/lib/sensitive-filter";
 import { getServerSensitiveGuard } from "@/lib/sensitive-guard.server";
 import { STYLE_CONFIGS } from "@/lib/style-configs";
+import { ThinkEchoPeeler } from "@/lib/strip-think-echo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,13 +35,10 @@ function safeUpstreamPayload(payload: UpstreamPayload): Record<string, unknown> 
 }
 
 /**
- * 上游对单次批量的总量有硬限制：整批 prompt 过大（实测 88 条 × ~780 字符）时
- * 会返回 200 但静默断流，一个 token 都不给；且同一时刻只允许一个批量在跑
- * （否则 409）。因此把 contents 拆成小批串行发送，回传时把批内 index
- * 重映射为全局 index，前端无感知。32 条/批经实测稳定。
+ * 和 vibe-code 一样先把全部 contents 一次发出去。
+ * 部分上游只回 index 0，缺的序号再按条补请求，最多 8 路同时进行。
  */
-const UPSTREAM_CHUNK_SIZE = 32;
-const INTER_CHUNK_DELAY_MS = 500;
+const UPSTREAM_CONCURRENCY = 8;
 const BUSY_RETRY_DELAY_MS = 1200;
 const MAX_BUSY_RETRIES = 3;
 
@@ -48,32 +46,17 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-interface UpstreamChunk {
-  offset: number;
-  body: Record<string, unknown>;
-}
-
-function buildChunkBodies(
+function payloadForContent(
   payload: UpstreamPayload,
-  chunkSize: number,
-): UpstreamChunk[] {
-  const contents = Array.isArray(payload.contents)
-    ? (payload.contents as string[])
-    : [];
-  const chunks: UpstreamChunk[] = [];
-  for (let offset = 0; offset < contents.length; offset += chunkSize) {
-    chunks.push({
-      offset,
-      body: { ...payload, contents: contents.slice(offset, offset + chunkSize) },
-    });
-  }
-  return chunks;
+  content: string,
+): UpstreamPayload {
+  return { ...payload, contents: [content] };
 }
 
-/** 发送单批请求；上游忙（409）时等待后重试 */
-async function fetchUpstreamChunk(
+/** 上游忙（409）时等待后重试 */
+async function fetchUpstream(
   apiUrl: string,
-  chunk: UpstreamChunk,
+  payload: UpstreamPayload,
   signal: AbortSignal,
 ): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
@@ -83,7 +66,7 @@ async function fetchUpstreamChunk(
         "Content-Type": "application/json",
         Accept: "text/event-stream, application/json",
       },
-      body: JSON.stringify(chunk.body),
+      body: JSON.stringify(payload),
       signal,
       cache: "no-store",
     });
@@ -109,7 +92,7 @@ interface OutputScreen {
 }
 
 /**
- * 读取单批上游 SSE，把批内 index 重映射为全局 index 后转发；返回转发的事件数。
+ * 读取上游 SSE 并转发；返回已经写出正文的全局 index。
  * 若提供 [screen]，则逐 style 累积文本并过滤敏感词：命中后不再转发该 style 的
  * 原始增量（既不落客户端也不落调试日志），改为发送一次 blocked 控制事件。
  */
@@ -118,12 +101,31 @@ async function pumpChunkToClient(
   offset: number,
   controller: ReadableStreamDefaultController<Uint8Array>,
   screen: OutputScreen | null,
-): Promise<number> {
+): Promise<Set<number>> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let buffer = "";
-  let events = 0;
+  const filled = new Set<number>();
+  const peelers = new Map<number, ThinkEchoPeeler>();
+
+  const peelDelta = (index: number, delta: string, eof = false): string => {
+    let peeler = peelers.get(index);
+    if (!peeler) {
+      peeler = new ThinkEchoPeeler();
+      peelers.set(index, peeler);
+    }
+    return eof ? peeler.finish() : peeler.push(delta);
+  };
+
+  const enqueueChoices = (choices: UpstreamChoice[]) => {
+    if (choices.length === 0) {
+      return;
+    }
+    controller.enqueue(
+      encoder.encode(`data: ${JSON.stringify({ choices })}\n\n`),
+    );
+  };
 
   const screenChoice = (choice: UpstreamChoice): UpstreamChoice | null => {
     if (!screen || typeof choice.index !== "number") {
@@ -157,24 +159,35 @@ async function pumpChunkToClient(
     }
     try {
       const parsed = JSON.parse(payload) as { choices?: UpstreamChoice[] };
-      if (Array.isArray(parsed.choices)) {
-        const outChoices: UpstreamChoice[] = [];
-        for (const choice of parsed.choices) {
-          if (typeof choice.index === "number") {
-            choice.index += offset;
-          }
-          const screened = screenChoice(choice);
-          if (screened) {
-            outChoices.push(screened);
-          }
-        }
-        if (outChoices.length === 0) {
-          return;
-        }
-        parsed.choices = outChoices;
+      if (!Array.isArray(parsed.choices)) {
+        return;
       }
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify(parsed)}\n\n`));
-      events += 1;
+      const outChoices: UpstreamChoice[] = [];
+      for (const choice of parsed.choices) {
+        const next: UpstreamChoice = { ...choice, delta: choice.delta ? { ...choice.delta } : choice.delta };
+        if (typeof next.index === "number") {
+          next.index += offset;
+        }
+        if (typeof next.index === "number" && next.delta?.content) {
+          const content = peelDelta(next.index, next.delta.content);
+          if (!content) {
+            continue;
+          }
+          next.delta = { content };
+        }
+        const screened = screenChoice(next);
+        if (!screened) {
+          continue;
+        }
+        outChoices.push(screened);
+        const wrote =
+          Boolean(screened.blocked) ||
+          Boolean(screened.delta?.content);
+        if (wrote && typeof screened.index === "number") {
+          filled.add(screened.index);
+        }
+      }
+      enqueueChoices(outChoices);
     } catch {
       // 忽略偶发的非 JSON 行
     }
@@ -196,10 +209,26 @@ async function pumpChunkToClient(
     if (buffer) {
       emitLine(buffer);
     }
+    const tail: UpstreamChoice[] = [];
+    for (const index of peelers.keys()) {
+      const content = peelDelta(index, "", true);
+      if (!content) {
+        continue;
+      }
+      const screened = screenChoice({ index, delta: { content } });
+      if (!screened) {
+        continue;
+      }
+      tail.push(screened);
+      if (typeof screened.index === "number") {
+        filled.add(screened.index);
+      }
+    }
+    enqueueChoices(tail);
   } finally {
     reader.releaseLock();
   }
-  return events;
+  return filled;
 }
 
 function makeRunId(): string {
@@ -287,7 +316,7 @@ export async function POST(request: Request): Promise<Response> {
       {
         code: "MISSING_API_URL",
         error:
-          "请在 .env 配置 RWKV_API_URL（例如 http://192.168.0.12:8000/v1/chat/completions）",
+          "请在 .env 配置 RWKV_API_URL（例如 http://192.168.0.115:8030/v1/chat/completions）",
       },
       { status: 500 },
     );
@@ -333,13 +362,15 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
-  const chunks = buildChunkBodies(upstreamPayload, UPSTREAM_CHUNK_SIZE);
+  const contents = Array.isArray(upstreamPayload.contents)
+    ? (upstreamPayload.contents as string[])
+    : [];
 
-  // 预检第一批：连接失败/鉴权失败仍走 JSON 错误返回，避免给前端一个空的 200 流
+  // 预检整包：连接失败/鉴权失败仍走 JSON 错误返回，避免给前端一个空的 200 流
   let upstreamResponse: Response;
   const upstreamStartAt = Date.now();
   try {
-    upstreamResponse = await fetchUpstreamChunk(apiUrl, chunks[0], request.signal);
+    upstreamResponse = await fetchUpstream(apiUrl, upstreamPayload, request.signal);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "无法连接上游 RWKV 服务";
@@ -403,52 +434,84 @@ export async function POST(request: Request): Promise<Response> {
   const encoder = new TextEncoder();
   let clientBody = new ReadableStream<Uint8Array>({
     async start(controller) {
-      try {
-        for (let i = 0; i < chunks.length; i++) {
+      const pumpStyle = async (
+        index: number,
+        preset?: Response,
+      ): Promise<void> => {
+        const content = contents[index] ?? "";
+        for (let attempt = 0; attempt < 2; attempt++) {
           if (request.signal.aborted) {
-            break;
+            return;
           }
-          // 单批静默失败（200 但没有任何 data 事件）时重试一次
-          for (let attempt = 0; attempt < 2; attempt++) {
-            let response: Response;
-            if (i === 0 && attempt === 0) {
-              response = firstResponse;
-            } else {
-              await sleep(INTER_CHUNK_DELAY_MS);
-              try {
-                response = await fetchUpstreamChunk(
-                  apiUrl,
-                  chunks[i],
-                  request.signal,
-                );
-              } catch (error) {
-                console.warn(
-                  `[/api/generate] run ${runId} chunk ${i} connect error:`,
-                  error instanceof Error ? error.message : error,
-                );
-                break;
-              }
-              if (!response.ok || !response.body) {
-                const detail = await response.text().catch(() => "");
-                console.warn(
-                  `[/api/generate] run ${runId} chunk ${i} bad response ${response.status}: ${detail.slice(0, 200)}`,
-                );
-                continue;
-              }
+          let response = preset;
+          preset = undefined;
+          if (!response) {
+            try {
+              response = await fetchUpstream(
+                apiUrl,
+                payloadForContent(upstreamPayload, content),
+                request.signal,
+              );
+            } catch (error) {
+              console.warn(
+                `[/api/generate] run ${runId} style ${index} connect error:`,
+                error instanceof Error ? error.message : error,
+              );
+              return;
             }
-            const events = await pumpChunkToClient(
-              response.body as ReadableStream<Uint8Array>,
-              chunks[i].offset,
-              controller,
-              outputScreen,
-            );
-            if (events > 0) {
-              break;
-            }
+          }
+          if (!response.ok || !response.body) {
+            const detail = await response.text().catch(() => "");
             console.warn(
-              `[/api/generate] run ${runId} chunk ${i} empty stream (attempt ${attempt + 1}/2)`,
+              `[/api/generate] run ${runId} style ${index} bad response ${response.status}: ${detail.slice(0, 200)}`,
             );
+            continue;
           }
+          const filled = await pumpChunkToClient(
+            response.body,
+            index,
+            controller,
+            outputScreen,
+          );
+          if (filled.size > 0) {
+            return;
+          }
+          console.warn(
+            `[/api/generate] run ${runId} style ${index} empty stream (attempt ${attempt + 1}/2)`,
+          );
+        }
+      };
+
+      try {
+        const filled = await pumpChunkToClient(
+          firstResponse.body,
+          0,
+          controller,
+          outputScreen,
+        );
+        const missing = contents
+          .map((_, index) => index)
+          .filter((index) => !filled.has(index));
+        if (missing.length > 0 && missing.length < contents.length) {
+          console.warn(
+            `[/api/generate] run ${runId} batch returned ${filled.size}/${contents.length}, filling ${missing.length}`,
+          );
+        }
+        let cursor = 0;
+        const worker = async (): Promise<void> => {
+          while (!request.signal.aborted) {
+            const index = cursor;
+            cursor += 1;
+            const styleIndex = missing[index];
+            if (styleIndex === undefined) {
+              return;
+            }
+            await pumpStyle(styleIndex);
+          }
+        };
+        const workers = Math.min(UPSTREAM_CONCURRENCY, missing.length);
+        if (workers > 0) {
+          await Promise.all(Array.from({ length: workers }, () => worker()));
         }
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       } catch (error) {
